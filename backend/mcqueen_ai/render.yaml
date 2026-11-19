@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: mcqueen-ai-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: LLM_BASE_URL
+        value: ""
+      - key: LLM_TIMEOUT_SECONDS
+        value: "18"
+      - key: MCQUEEN_SESSION_MAX_TURNS
+        value: "10"
+      - key: MCQUEEN_SESSION_TTL_SECONDS
+        value: "3600"
+      - key: RATE_LIMIT_REQUESTS
+        value: "30"
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: ALLOWED_ORIGINS
+        value: ""
+      - key: MCQUEEN_CLIENT_TOKEN
+        sync: false
