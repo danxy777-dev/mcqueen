@@ -19,7 +19,7 @@ services:
       - key: LLM_BASE_URL
         value: ""
       - key: LLM_TIMEOUT_SECONDS
-        value: "18"
+        value: "25"
       - key: MCQUEEN_SESSION_MAX_TURNS
         value: "10"
       - key: MCQUEEN_SESSION_TTL_SECONDS

@@ -30,13 +30,13 @@ from app.security import scrub_secrets
 logger = logging.getLogger("mcqueen_ai.llm")
 
 _PREFERRED_GEMINI_FLASH_MODELS: tuple[str, ...] = (
-    "gemini-3.8-flash",
-    "gemini-3-flash-preview",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
 )
 _EXCLUDED_GEMINI_MODEL_PARTS: tuple[str, ...] = (
     "embedding",
@@ -304,14 +304,25 @@ async def execute_chat_turn(
     messages = _build_prompt_messages(history, state_dict, user_text)
 
     async def _create_completion(target_model: str) -> Any:
-        return await client.chat.completions.create(
-            model=target_model,
-            messages=messages,
-            tools=ROBOT_TOOLS,
-            tool_choice="auto",
-            temperature=0.7,
-            max_tokens=650,
-        )
+        kwargs: dict[str, Any] = {
+            "model": target_model,
+            "messages": messages,
+            "tools": ROBOT_TOOLS,
+            "tool_choice": "auto",
+            "temperature": 0.7,
+            "max_tokens": 650,
+        }
+        if provider_name == "gemini-openai-compat":
+            kwargs["reasoning_effort"] = "minimal"
+        try:
+            return await client.chat.completions.create(**kwargs)
+        except BadRequestError as br_exc:
+            # Modelos mais antigos sem parâmetro reasoning_effort
+            if "reasoning_effort" in kwargs:
+                logger.info("Retrying model '%s' without reasoning_effort", target_model)
+                kwargs.pop("reasoning_effort", None)
+                return await client.chat.completions.create(**kwargs)
+            raise br_exc
 
     try:
         first = await _create_completion(model_name)
@@ -404,12 +415,19 @@ async def execute_chat_turn(
 
     reply_text = ""
     try:
-        second = await client.chat.completions.create(
-            model=model_name,
-            messages=followup_messages,
-            temperature=0.7,
-            max_tokens=500,
-        )
+        followup_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "messages": followup_messages,
+            "temperature": 0.7,
+            "max_tokens": 500,
+        }
+        if provider_name == "gemini-openai-compat":
+            followup_kwargs["reasoning_effort"] = "minimal"
+        try:
+            second = await client.chat.completions.create(**followup_kwargs)
+        except BadRequestError:
+            followup_kwargs.pop("reasoning_effort", None)
+            second = await client.chat.completions.create(**followup_kwargs)
         reply_text = (second.choices[0].message.content or "").strip()
     except (APIError, APITimeoutError, APIConnectionError, RateLimitError) as exc:
         logger.warning("Follow-up LLM skipped (%s): %s", type(exc).__name__, scrub_secrets(str(exc)))

@@ -157,7 +157,7 @@ def load_settings() -> AppSettings:
         provider=provider,
         configured=configured,
         allow_empty_key=allow_empty_key,
-        llm_timeout_seconds=_clamp_float_env("LLM_TIMEOUT_SECONDS", 18.0, 3.0, 60.0),
+        llm_timeout_seconds=_clamp_float_env("LLM_TIMEOUT_SECONDS", 25.0, 3.0, 60.0),
         allowed_origins=allowed_origins,
         client_token=client_token,
         session_max_turns=_clamp_int_env("MCQUEEN_SESSION_MAX_TURNS", 10, 1, 50),
