@@ -224,6 +224,7 @@ class AiVoiceSettings {
   final bool roboticVoice;
   final String backendUrl;
   final bool allowLocalDevHttp;
+  final String clientToken;
 
   const AiVoiceSettings({
     this.autoSpeak = true,
@@ -232,6 +233,7 @@ class AiVoiceSettings {
     this.roboticVoice = false,
     this.backendUrl = AiConfig.compileTimeBackendUrl,
     this.allowLocalDevHttp = false,
+    this.clientToken = AiConfig.compileTimeClientToken,
   });
 
   double get effectivePitch => roboticVoice ? 0.78 : 1.02;
@@ -245,6 +247,7 @@ class AiVoiceSettings {
     bool? roboticVoice,
     String? backendUrl,
     bool? allowLocalDevHttp,
+    String? clientToken,
   }) {
     return AiVoiceSettings(
       autoSpeak: autoSpeak ?? this.autoSpeak,
@@ -253,6 +256,7 @@ class AiVoiceSettings {
       roboticVoice: roboticVoice ?? this.roboticVoice,
       backendUrl: AiConfig.normalizeUrl(backendUrl ?? this.backendUrl),
       allowLocalDevHttp: allowLocalDevHttp ?? this.allowLocalDevHttp,
+      clientToken: (clientToken ?? this.clientToken).trim(),
     );
   }
 
@@ -263,13 +267,15 @@ class AiVoiceSettings {
         'roboticVoice': roboticVoice,
         'backendUrl': backendUrl,
         'allowLocalDevHttp': allowLocalDevHttp,
+        'clientToken': clientToken,
       };
 
   factory AiVoiceSettings.fromJson(Map<String, dynamic> map) {
     final storedUrl = AiConfig.normalizeUrl(map['backendUrl'] as String? ?? '');
     final allowLocal = map['allowLocalDevHttp'] as bool? ?? false;
+    final storedToken = (map['clientToken'] as String? ?? '').trim();
 
-    // Migra URL legada de emulador (`10.0.2.2`) para a URL em nuvem quando houver uma configurada.
+    // Migra URL vazia ou legada de emulador (`10.0.2.2`) para a URL em nuvem padrão.
     String effectiveUrl = storedUrl;
     if (effectiveUrl.isEmpty ||
         (!allowLocal && AiConfig.isLegacyLocalDefault(effectiveUrl))) {
@@ -284,6 +290,9 @@ class AiVoiceSettings {
       roboticVoice: map['roboticVoice'] as bool? ?? false,
       backendUrl: effectiveUrl,
       allowLocalDevHttp: allowLocal,
+      clientToken: storedToken.isNotEmpty
+          ? storedToken
+          : AiConfig.compileTimeClientToken,
     );
   }
 }

@@ -31,6 +31,7 @@ abstract class CloudAiBackendClient implements AiBackendClient {
   Future<AiBackendHealth> checkHealthWithOptions(
     String baseUrl, {
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
     bool wakeMode = false,
   });
@@ -41,6 +42,7 @@ abstract class CloudAiBackendClient implements AiBackendClient {
     required String message,
     required Map<String, dynamic> robotState,
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
   });
 
@@ -48,6 +50,7 @@ abstract class CloudAiBackendClient implements AiBackendClient {
     required String baseUrl,
     required String sessionId,
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
   });
 
@@ -101,6 +104,7 @@ class HttpAiBackendClient implements CloudAiBackendClient {
 
   Map<String, String> _buildHeaders({
     String? sessionToken,
+    String? clientToken,
     bool includeJsonContentType = false,
   }) {
     final headers = <String, String>{
@@ -112,8 +116,11 @@ class HttpAiBackendClient implements CloudAiBackendClient {
     if (sessionToken != null && sessionToken.trim().isNotEmpty) {
       headers['X-Session-Token'] = sessionToken.trim();
     }
-    if (AiConfig.compileTimeClientToken.isNotEmpty) {
-      headers['X-Client-Token'] = AiConfig.compileTimeClientToken;
+    final effectiveClientToken = (clientToken ?? '').trim().isNotEmpty
+        ? clientToken!.trim()
+        : AiConfig.compileTimeClientToken;
+    if (effectiveClientToken.isNotEmpty) {
+      headers['X-Client-Token'] = effectiveClientToken;
     }
     return headers;
   }
@@ -161,6 +168,7 @@ class HttpAiBackendClient implements CloudAiBackendClient {
   Future<AiBackendHealth> checkHealthWithOptions(
     String baseUrl, {
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
     bool wakeMode = false,
   }) async {
@@ -178,23 +186,53 @@ class HttpAiBackendClient implements CloudAiBackendClient {
 
     final normalized = validation.normalizedUrl;
     final timeout = wakeMode ? AiConfig.wakeHealthTimeout : AiConfig.healthTimeout;
+    final headers = _buildHeaders(
+      sessionToken: sessionToken,
+      clientToken: clientToken,
+    );
 
     try {
       final res = await _http
           .get(
             _buildUri(normalized, '/health'),
-            headers: _buildHeaders(sessionToken: sessionToken),
+            headers: headers,
           )
           .timeout(timeout);
 
       final body = _tryDecodeJsonMap(res);
       if (res.statusCode == 200 && body != null) {
         final configured = body['configured'] as bool? ?? false;
+        final provider = body['provider'] as String?;
+        final model = body['model'] as String?;
+
+        if (configured) {
+          // Valida também `/status` para detectar se `MCQUEEN_CLIENT_TOKEN` está exigido no Render.
+          try {
+            final statusRes = await _http
+                .get(_buildUri(normalized, '/status'), headers: headers)
+                .timeout(AiConfig.healthTimeout);
+            if (statusRes.statusCode == 401 || statusRes.statusCode == 403) {
+              return AiBackendHealth(
+                reachable: true,
+                configured: false,
+                provider: provider,
+                model: model,
+                status: AiBackendStatus.invalidApiKey,
+                httpStatus: statusRes.statusCode,
+                error:
+                    'Servidor exige Token de Acesso (MCQUEEN_CLIENT_TOKEN). Informe o token em Configurar ou remova a variável no Render.',
+              );
+            }
+          } catch (_) {
+            // Não invalida `/health` por oscilação pontual na sonda auxiliar `/status`.
+          }
+        }
+
         return AiBackendHealth(
           reachable: true,
           configured: configured,
-          provider: body['provider'] as String?,
-          model: body['model'] as String?,
+          provider: provider,
+          model: model,
           status: configured
               ? AiBackendStatus.online
               : AiBackendStatus.llmUnavailable,
@@ -344,6 +382,7 @@ class HttpAiBackendClient implements CloudAiBackendClient {
     required String message,
     required Map<String, dynamic> robotState,
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
   }) async {
     final validation = _validateUrl(baseUrl, allowLocalHttp: allowLocalHttp);
@@ -365,6 +404,7 @@ class HttpAiBackendClient implements CloudAiBackendClient {
             _buildUri(normalized, '/chat'),
             headers: _buildHeaders(
               sessionToken: sessionToken,
+              clientToken: clientToken,
               includeJsonContentType: true,
             ),
             body: jsonEncode({
@@ -543,6 +583,7 @@ class HttpAiBackendClient implements CloudAiBackendClient {
     required String baseUrl,
     required String sessionId,
     String? sessionToken,
+    String? clientToken,
     bool allowLocalHttp = false,
   }) async {
     final validation = _validateUrl(baseUrl, allowLocalHttp: allowLocalHttp);
@@ -552,7 +593,10 @@ class HttpAiBackendClient implements CloudAiBackendClient {
       await _http
           .delete(
             _buildUri(validation.normalizedUrl, '/sessions/$sessionId'),
-            headers: _buildHeaders(sessionToken: sessionToken),
+            headers: _buildHeaders(
+              sessionToken: sessionToken,
+              clientToken: clientToken,
+            ),
           )
           .timeout(AiConfig.sessionClearTimeout);
     } catch (_) {}

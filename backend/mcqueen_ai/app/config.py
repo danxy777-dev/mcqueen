@@ -48,6 +48,22 @@ def _clamp_float_env(name: str, default: float, low: float, high: float) -> floa
     return max(low, min(high, val))
 
 
+def _normalize_base_url(base_url: str) -> str:
+    cleaned = base_url.strip()
+    if not cleaned:
+        return ""
+    lower = cleaned.lower().rstrip("/")
+    if lower.endswith("/chat/completions"):
+        cleaned = cleaned[: -len("/chat/completions")].rstrip("/")
+        lower = cleaned.lower()
+    if "generativelanguage.googleapis.com" in lower:
+        if lower.endswith("/v1beta"):
+            cleaned = f"{cleaned.rstrip('/')}/openai/"
+        elif lower.endswith("/openai"):
+            cleaned = f"{cleaned}/"
+    return cleaned
+
+
 def _detect_provider(base_url: str) -> str:
     lower = base_url.lower()
     if "generativelanguage.googleapis.com" in lower:
@@ -111,7 +127,7 @@ def load_settings() -> AppSettings:
     if api_key.lower() in _PLACEHOLDER_KEYS:
         api_key = ""
 
-    base_url = (os.getenv("LLM_BASE_URL") or "").strip()
+    base_url = _normalize_base_url(os.getenv("LLM_BASE_URL") or "")
     model = (os.getenv("LLM_MODEL") or "gpt-4o-mini").strip() or "gpt-4o-mini"
 
     raw_allow_empty = os.getenv("LLM_ALLOW_EMPTY_KEY", "false").strip().lower() == "true"

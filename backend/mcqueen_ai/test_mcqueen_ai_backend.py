@@ -7,7 +7,14 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import httpx
-from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    InternalServerError,
+    NotFoundError,
+    RateLimitError,
+)
 
 import main as backend_main
 from app.security import scrub_secrets
@@ -359,6 +366,39 @@ def test_provider_errors_map_cleanly_without_leaking_secrets(monkeypatch):
     r_conn = client.post("/chat", json={"session_id": "err-conn", "message": "Oi"})
     assert r_conn.status_code == 503
     assert r_conn.json()["error_code"] == "llm_unreachable"
+
+    not_found_resp = httpx.Response(404, request=dummy_req)
+    monkeypatch.setattr(
+        backend_main,
+        "create_llm_client",
+        _raise_factory(NotFoundError("Model not found", response=not_found_resp, body=None)),
+    )
+    r_nf = client.post("/chat", json={"session_id": "err-nf", "message": "Oi"})
+    assert r_nf.status_code == 502
+    assert r_nf.json()["error_code"] == "llm_model_not_found"
+
+    srv_resp = httpx.Response(500, request=dummy_req)
+    monkeypatch.setattr(
+        backend_main,
+        "create_llm_client",
+        _raise_factory(InternalServerError("Upstream 500", response=srv_resp, body=None)),
+    )
+    r_srv = client.post("/chat", json={"session_id": "err-srv", "message": "Oi"})
+    assert r_srv.status_code == 502
+    assert "HTTP 500" in r_srv.json()["detail"]
+
+
+def test_gemini_base_url_normalization(monkeypatch):
+    from app.config import load_settings
+
+    monkeypatch.setenv("LLM_API_KEY", "AIzaFakeKeyForNormalizationTest1234")
+    monkeypatch.setenv(
+        "LLM_BASE_URL",
+        "https://generativelanguage.googleapis.com/v1beta/chat/completions",
+    )
+    cfg = load_settings()
+    assert cfg.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert cfg.provider == "gemini-openai-compat"
 
 
 def test_chat_stream_sse_emits_events(monkeypatch):

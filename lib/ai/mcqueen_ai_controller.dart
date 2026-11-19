@@ -117,6 +117,7 @@ class McQueenAiController extends ChangeNotifier {
       return client.checkHealthWithOptions(
         _voiceSettings.backendUrl,
         sessionToken: _sessionToken,
+        clientToken: _voiceSettings.clientToken,
         allowLocalHttp: _voiceSettings.allowLocalDevHttp,
         wakeMode: wakeMode,
       );
@@ -166,7 +167,8 @@ class McQueenAiController extends ChangeNotifier {
   Future<void> updateVoiceSettings(AiVoiceSettings next) async {
     final urlChanged =
         next.backendUrl != _voiceSettings.backendUrl ||
-        next.allowLocalDevHttp != _voiceSettings.allowLocalDevHttp;
+        next.allowLocalDevHttp != _voiceSettings.allowLocalDevHttp ||
+        next.clientToken != _voiceSettings.clientToken;
     _voiceSettings = next;
     _safeNotify();
     await AiVoiceSettingsStore.save(next);
@@ -288,6 +290,7 @@ class McQueenAiController extends ChangeNotifier {
         message: text,
         robotState: statePayload,
         sessionToken: _sessionToken,
+        clientToken: _voiceSettings.clientToken,
         allowLocalHttp: _voiceSettings.allowLocalDevHttp,
       );
     }
@@ -473,6 +476,7 @@ class McQueenAiController extends ChangeNotifier {
         baseUrl: _voiceSettings.backendUrl,
         sessionId: oldSession,
         sessionToken: oldToken,
+        clientToken: _voiceSettings.clientToken,
         allowLocalHttp: _voiceSettings.allowLocalDevHttp,
       );
     } else {

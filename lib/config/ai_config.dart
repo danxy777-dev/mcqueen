@@ -22,18 +22,18 @@ class AiUrlValidationResult {
 
 /// Configuração centralizada do backend em nuvem do McQueen AI.
 ///
-/// Para embutir a URL HTTPS definitiva do Render no build de produção sem alterá-la em código:
-/// `flutter build apk --release --dart-define=MCQUEEN_AI_URL=https://SEU-SERVICO.onrender.com`
+/// Aponta por padrão para a URL HTTPS validada no Render (`https://mcqueen-ai-backend-vnm5.onrender.com`),
+/// podendo ser sobrescrita em build via `--dart-define=MCQUEEN_AI_URL=https://...`.
 ///
 /// Opcionalmente, caso habilite `MCQUEEN_CLIENT_TOKEN` no Render:
 /// `--dart-define=MCQUEEN_CLIENT_TOKEN=seu-token`
 class AiConfig {
   const AiConfig._();
 
-  /// URL configurada em tempo de compilação via `--dart-define=MCQUEEN_AI_URL=...`.
+  /// URL padrão validada em produção no Render (sobrescrita opcional via `--dart-define=MCQUEEN_AI_URL=...`).
   static const String compileTimeBackendUrl = String.fromEnvironment(
     'MCQUEEN_AI_URL',
-    defaultValue: '',
+    defaultValue: 'https://mcqueen-ai-backend-vnm5.onrender.com',
   );
 
   /// Token opcional do aplicativo configurado em tempo de compilação via `--dart-define=MCQUEEN_CLIENT_TOKEN=...`.
@@ -43,7 +43,6 @@ class AiConfig {
   );
 
   /// URL padrão utilizada quando não há URL personalizada salva pelo usuário.
-  /// Fica vazia enquanto não houver URL real de produção definida em `--dart-define=MCQUEEN_AI_URL=...`.
   static String get defaultBackendUrl => normalizeUrl(compileTimeBackendUrl);
 
   static bool get hasCompileTimeUrl => defaultBackendUrl.isNotEmpty;

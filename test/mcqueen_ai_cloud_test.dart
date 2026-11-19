@@ -51,7 +51,12 @@ void main() {
       );
     });
 
-    test('Migra URL legada de emulador (10.0.2.2) quando carregamento ocorre fora do modo local', () {
+    test('URL padrão do app aponta para o deploy HTTPS validado no Render e migra 10.0.2.2', () {
+      expect(
+        AiConfig.defaultBackendUrl,
+        'https://mcqueen-ai-backend-vnm5.onrender.com',
+      );
+
       final migrated = AiVoiceSettings.fromJson({
         'autoSpeak': true,
         'backendUrl': 'http://10.0.2.2:8000',
@@ -69,13 +74,22 @@ void main() {
   });
 
   group('HttpAiBackendClient distingue os estados reais de rede, Render e LLM', () {
-    const cloudUrl = 'https://mcqueen-ai-cloud.onrender.com';
+    const cloudUrl = 'https://mcqueen-ai-backend-vnm5.onrender.com';
 
-    test('checkHealth classifica notConfigured, online, llmUnavailable, wakingUp, rateLimited e invalidApiKey', () async {
+    test('checkHealth classifica notConfigured, online, llmUnavailable, wakingUp, rateLimited e invalidApiKey (incluindo /status 401)', () async {
       final clientOnline = HttpAiBackendClient(
         client: MockClient((req) async {
-          expect(req.url.toString(), '$cloudUrl/health');
           expect(req.headers['X-Session-Token'], 'sess-tok-1');
+          if (req.url.path == '/status') {
+            if (req.headers['X-Client-Token'] != 'app-tok-ok') {
+              return http.Response(
+                jsonEncode({'error_code': 'unauthorized_client'}),
+                401,
+              );
+            }
+            return http.Response(jsonEncode({'ok': true, 'status': 'online'}), 200);
+          }
+          expect(req.url.toString(), '$cloudUrl/health');
           return http.Response(
             jsonEncode({
               'ok': true,
@@ -91,9 +105,17 @@ void main() {
       final emptyRes = await clientOnline.checkHealthWithOptions('');
       expect(emptyRes.effectiveStatus, AiBackendStatus.notConfigured);
 
+      // Sem X-Client-Token quando servidor exige MCQUEEN_CLIENT_TOKEN -> detecta 401 no /status
+      final missingTokenRes = await clientOnline.checkHealthWithOptions(
+        cloudUrl,
+        sessionToken: 'sess-tok-1',
+      );
+      expect(missingTokenRes.effectiveStatus, AiBackendStatus.invalidApiKey);
+
       final onlineRes = await clientOnline.checkHealthWithOptions(
         cloudUrl,
         sessionToken: 'sess-tok-1',
+        clientToken: 'app-tok-ok',
       );
       expect(onlineRes.ready, isTrue);
       expect(onlineRes.effectiveStatus, AiBackendStatus.online);

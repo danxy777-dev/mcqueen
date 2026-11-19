@@ -941,6 +941,7 @@ class _AiSettingsSheet extends StatefulWidget {
 
 class _AiSettingsSheetState extends State<_AiSettingsSheet> {
   late final TextEditingController _urlCtrl;
+  late final TextEditingController _tokenCtrl;
   late bool _allowLocalDevHttp;
   String? _urlError;
 
@@ -949,12 +950,14 @@ class _AiSettingsSheetState extends State<_AiSettingsSheet> {
     super.initState();
     final ai = context.read<McQueenAiController>();
     _urlCtrl = TextEditingController(text: ai.voiceSettings.backendUrl);
+    _tokenCtrl = TextEditingController(text: ai.voiceSettings.clientToken);
     _allowLocalDevHttp = ai.voiceSettings.allowLocalDevHttp;
   }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
+    _tokenCtrl.dispose();
     super.dispose();
   }
 
@@ -979,6 +982,7 @@ class _AiSettingsSheetState extends State<_AiSettingsSheet> {
     await ai.updateVoiceSettings(
       current.copyWith(
         backendUrl: validation.normalizedUrl,
+        clientToken: _tokenCtrl.text,
         allowLocalDevHttp: _allowLocalDevHttp,
       ),
     );
@@ -1083,9 +1087,23 @@ class _AiSettingsSheetState extends State<_AiSettingsSheet> {
               },
               decoration: InputDecoration(
                 labelText: 'URL HTTPS do Backend em Nuvem (sem chaves no app)',
-                hintText: 'https://seu-mcqueen-ai.onrender.com',
+                hintText: AiConfig.compileTimeBackendUrl,
                 errorText: _urlError,
                 errorMaxLines: 2,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _tokenCtrl,
+              obscureText: true,
+              autocorrect: false,
+              style: GoogleFonts.jetBrainsMono(fontSize: 12.5),
+              decoration: InputDecoration(
+                labelText: 'Token do app (X-Client-Token, opcional)',
+                hintText: 'Preencha somente se MCQUEEN_CLIENT_TOKEN estiver no Render',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

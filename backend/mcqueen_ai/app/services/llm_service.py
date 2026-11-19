@@ -10,11 +10,15 @@ from typing import Any
 from openai import (
     APIConnectionError,
     APIError,
+    APIStatusError,
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
+    InternalServerError,
+    NotFoundError,
     PermissionDeniedError,
     RateLimitError,
+    UnprocessableEntityError,
 )
 
 from prompts import BASE_SYSTEM_PROMPT, build_state_context
@@ -39,7 +43,13 @@ class LlmServiceError(Exception):
 def map_openai_error(exc: Exception) -> LlmServiceError:
     """Converte exceções do SDK OpenAI-compatível em respostas HTTP seguras em pt-BR."""
     safe_msg = scrub_secrets(str(exc))
-    logger.warning("LLM provider error (%s): %s", type(exc).__name__, safe_msg)
+    provider_status = getattr(exc, "status_code", None)
+    logger.warning(
+        "LLM provider error (%s, status=%s): %s",
+        type(exc).__name__,
+        provider_status,
+        safe_msg,
+    )
 
     if isinstance(exc, (AuthenticationError, PermissionDeniedError)):
         return LlmServiceError(
@@ -65,11 +75,24 @@ def map_openai_error(exc: Exception) -> LlmServiceError:
             "llm_unreachable",
             "Provedor de IA temporariamente inacessível pelo servidor.",
         )
-    if isinstance(exc, BadRequestError):
+    if isinstance(exc, NotFoundError):
+        return LlmServiceError(
+            502,
+            "llm_model_not_found",
+            "Modelo de IA ou endpoint não encontrado no provedor (HTTP 404). Verifique LLM_MODEL e LLM_BASE_URL.",
+        )
+    if isinstance(exc, (BadRequestError, UnprocessableEntityError)):
         return LlmServiceError(
             502,
             "llm_bad_request",
-            "O provedor de IA rejeitou a requisição. Verifique o modelo configurado no servidor.",
+            f"O provedor de IA rejeitou a requisição (HTTP {provider_status or 400}). Verifique modelo e parâmetros.",
+        )
+    if isinstance(exc, (InternalServerError, APIStatusError)):
+        code_str = f"HTTP {provider_status}" if provider_status else type(exc).__name__
+        return LlmServiceError(
+            502,
+            "llm_api_error",
+            f"Erro ao consultar o provedor de IA ({code_str}). Tente novamente em instantes.",
         )
     return LlmServiceError(
         502,
@@ -79,6 +102,12 @@ def map_openai_error(exc: Exception) -> LlmServiceError:
 
 
 def _message_to_assistant_dict(msg: Any) -> dict[str, Any]:
+    if hasattr(msg, "model_dump") and callable(msg.model_dump):
+        dumped = msg.model_dump(exclude_none=True)
+        if isinstance(dumped, dict):
+            dumped.setdefault("role", "assistant")
+            return dumped
+
     tool_calls_payload = []
     for tc in getattr(msg, "tool_calls", None) or []:
         tool_calls_payload.append(
@@ -176,9 +205,9 @@ def _build_prompt_messages(
     state_dict: dict[str, Any],
     user_text: str,
 ) -> list[dict[str, Any]]:
+    combined_system = f"{BASE_SYSTEM_PROMPT}\n\n{build_state_context(state_dict)}"
     return [
-        {"role": "system", "content": BASE_SYSTEM_PROMPT},
-        {"role": "system", "content": build_state_context(state_dict)},
+        {"role": "system", "content": combined_system},
         *history,
         {"role": "user", "content": user_text},
     ]
@@ -207,7 +236,7 @@ async def execute_chat_turn(
             tools=ROBOT_TOOLS,
             tool_choice="auto",
             temperature=0.7,
-            max_tokens=280,
+            max_tokens=650,
         )
     except (
         AuthenticationError,
@@ -216,6 +245,10 @@ async def execute_chat_turn(
         APITimeoutError,
         APIConnectionError,
         BadRequestError,
+        NotFoundError,
+        UnprocessableEntityError,
+        InternalServerError,
+        APIStatusError,
         APIError,
     ) as exc:
         raise map_openai_error(exc) from exc
@@ -258,7 +291,7 @@ async def execute_chat_turn(
             model=model_name,
             messages=followup_messages,
             temperature=0.7,
-            max_tokens=220,
+            max_tokens=500,
         )
         reply_text = (second.choices[0].message.content or "").strip()
     except (APIError, APITimeoutError, APIConnectionError, RateLimitError) as exc:
