@@ -57,10 +57,8 @@ def _normalize_base_url(base_url: str) -> str:
         cleaned = cleaned[: -len("/chat/completions")].rstrip("/")
         lower = cleaned.lower()
     if "generativelanguage.googleapis.com" in lower:
-        if lower.endswith("/v1beta"):
-            cleaned = f"{cleaned.rstrip('/')}/openai/"
-        elif lower.endswith("/openai"):
-            cleaned = f"{cleaned}/"
+        # Garante a URL base oficial da camada OpenAI-compatível do Gemini
+        return "https://generativelanguage.googleapis.com/v1beta/openai/"
     return cleaned
 
 

@@ -29,6 +29,30 @@ from app.security import scrub_secrets
 
 logger = logging.getLogger("mcqueen_ai.llm")
 
+_PREFERRED_GEMINI_FLASH_MODELS: tuple[str, ...] = (
+    "gemini-3.8-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+)
+_EXCLUDED_GEMINI_MODEL_PARTS: tuple[str, ...] = (
+    "embedding",
+    "imagen",
+    "veo",
+    "tts",
+    "audio",
+    "image",
+    "omni",
+    "aqa",
+    "robotics",
+    "computer-use",
+    "deep-research",
+)
+_gemini_model_cache: dict[str, str] = {}
+
 
 class LlmServiceError(Exception):
     """Erro mapeado para resposta HTTP segura sem expor detalhes internos."""
@@ -213,6 +237,51 @@ def _build_prompt_messages(
     ]
 
 
+async def _resolve_gemini_fallback_models(
+    client: Any,
+    failed_model: str,
+) -> list[str]:
+    """Consulta `models.list()` na API Gemini e ordena modelos Flash compatíveis disponíveis."""
+    models_res = getattr(getattr(client, "models", None), "list", None)
+    if not callable(models_res):
+        return []
+    try:
+        listed = await models_res()
+    except Exception as exc:
+        logger.warning("Gemini models.list() failed: %s", type(exc).__name__)
+        return []
+
+    items = getattr(listed, "data", None) or []
+    available: list[str] = []
+    for item in items:
+        raw_id = str(getattr(item, "id", "") or "").strip()
+        if not raw_id:
+            continue
+        clean_id = raw_id.removeprefix("models/")
+        lower = clean_id.lower()
+        if clean_id == failed_model or clean_id in available:
+            continue
+        if any(bad in lower for bad in _EXCLUDED_GEMINI_MODEL_PARTS):
+            continue
+        if "gemini" in lower:
+            available.append(clean_id)
+
+    if not available:
+        return []
+
+    ordered: list[str] = []
+    for preferred in _PREFERRED_GEMINI_FLASH_MODELS:
+        if preferred in available and preferred not in ordered:
+            ordered.append(preferred)
+    for m in available:
+        if "flash" in m.lower() and m not in ordered:
+            ordered.append(m)
+    for m in available:
+        if m not in ordered:
+            ordered.append(m)
+    return ordered[:4]
+
+
 async def execute_chat_turn(
     *,
     client: Any,
@@ -224,20 +293,69 @@ async def execute_chat_turn(
     owner_token_hash: str | None,
 ) -> dict[str, Any]:
     """Executa um turno completo de conversa + tool calling validado."""
-    model_name = str(cfg["model"])
+    configured_model = str(cfg["model"])
     provider_name = str(cfg.get("provider", "openai"))
+    model_name = (
+        _gemini_model_cache.get(configured_model, configured_model)
+        if provider_name == "gemini-openai-compat"
+        else configured_model
+    )
     history = memory_store.get_history(session_id, owner_token_hash=owner_token_hash)
     messages = _build_prompt_messages(history, state_dict, user_text)
 
-    try:
-        first = await client.chat.completions.create(
-            model=model_name,
+    async def _create_completion(target_model: str) -> Any:
+        return await client.chat.completions.create(
+            model=target_model,
             messages=messages,
             tools=ROBOT_TOOLS,
             tool_choice="auto",
             temperature=0.7,
             max_tokens=650,
         )
+
+    try:
+        first = await _create_completion(model_name)
+    except NotFoundError as exc:
+        candidates = (
+            await _resolve_gemini_fallback_models(client, model_name)
+            if provider_name == "gemini-openai-compat"
+            else []
+        )
+        if not candidates:
+            raise map_openai_error(exc) from exc
+
+        first = None
+        last_err: Exception = exc
+        for candidate in candidates:
+            logger.info(
+                "Gemini model '%s' returned 404; trying live available model '%s'",
+                model_name,
+                candidate,
+            )
+            try:
+                first = await _create_completion(candidate)
+                model_name = candidate
+                _gemini_model_cache[configured_model] = candidate
+                break
+            except NotFoundError as next_nf:
+                last_err = next_nf
+                continue
+            except (
+                AuthenticationError,
+                PermissionDeniedError,
+                RateLimitError,
+                APITimeoutError,
+                APIConnectionError,
+                BadRequestError,
+                UnprocessableEntityError,
+                InternalServerError,
+                APIStatusError,
+                APIError,
+            ) as retry_exc:
+                raise map_openai_error(retry_exc) from retry_exc
+
+        if first is None:
+            raise map_openai_error(last_err) from last_err
     except (
         AuthenticationError,
         PermissionDeniedError,
@@ -245,7 +363,6 @@ async def execute_chat_turn(
         APITimeoutError,
         APIConnectionError,
         BadRequestError,
-        NotFoundError,
         UnprocessableEntityError,
         InternalServerError,
         APIStatusError,

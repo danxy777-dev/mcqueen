@@ -388,9 +388,11 @@ def test_provider_errors_map_cleanly_without_leaking_secrets(monkeypatch):
     assert "HTTP 500" in r_srv.json()["detail"]
 
 
-def test_gemini_base_url_normalization(monkeypatch):
+def test_gemini_base_url_normalization_and_model_fallback(monkeypatch):
     from app.config import load_settings
+    from app.services import llm_service
 
+    llm_service._gemini_model_cache.clear()
     monkeypatch.setenv("LLM_API_KEY", "AIzaFakeKeyForNormalizationTest1234")
     monkeypatch.setenv(
         "LLM_BASE_URL",
@@ -399,6 +401,52 @@ def test_gemini_base_url_normalization(monkeypatch):
     cfg = load_settings()
     assert cfg.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
     assert cfg.provider == "gemini-openai-compat"
+
+    _reset_runtime_state(monkeypatch)
+    dummy_req = httpx.Request("POST", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+    nf_resp = httpx.Response(404, request=dummy_req)
+    called_models: list[str] = []
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            called_models.append(kwargs["model"])
+            if kwargs["model"] == "gemini-missing":
+                raise NotFoundError("not found", response=nf_resp, body=None)
+            return _fake_choice(content="Gemini respondeu no modelo disponivel!")
+
+    class FakeModels:
+        async def list(self):
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(id="models/text-embedding-004"),
+                    SimpleNamespace(id="models/gemini-2.5-flash"),
+                ]
+            )
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=FakeCompletions()),
+        models=FakeModels(),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "create_llm_client",
+        lambda: (
+            fake_client,
+            {
+                "configured": True,
+                "model": "gemini-missing",
+                "provider": "gemini-openai-compat",
+            },
+        ),
+    )
+
+    client = TestClient(backend_main.app)
+    res = client.post("/chat", json={"session_id": "gem-fb", "message": "Oi!"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["model"] == "gemini-2.5-flash"
+    assert "Gemini respondeu" in body["reply"]
+    assert called_models == ["gemini-missing", "gemini-2.5-flash"]
 
 
 def test_chat_stream_sse_emits_events(monkeypatch):
