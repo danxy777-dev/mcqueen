@@ -393,7 +393,14 @@ def test_gemini_base_url_normalization_and_model_fallback(monkeypatch):
     from app.services import llm_service
 
     llm_service._gemini_model_cache.clear()
-    monkeypatch.setenv("LLM_API_KEY", "AIzaFakeKeyForNormalizationTest1234")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("LLM_API_KEY", "AIzaFakeKeyForAutoDetection123456")
+    auto_cfg = load_settings()
+    assert auto_cfg.provider == "gemini-openai-compat"
+    assert auto_cfg.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert auto_cfg.model == "gemini-2.5-flash-lite"
+
     monkeypatch.setenv(
         "LLM_BASE_URL",
         "https://generativelanguage.googleapis.com/v1beta/chat/completions",

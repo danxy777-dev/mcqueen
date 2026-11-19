@@ -126,13 +126,26 @@ def load_settings() -> AppSettings:
         api_key = ""
 
     base_url = _normalize_base_url(os.getenv("LLM_BASE_URL") or "")
-    model = (os.getenv("LLM_MODEL") or "gpt-4o-mini").strip() or "gpt-4o-mini"
+    raw_model = (os.getenv("LLM_MODEL") or "").strip()
+
+    if not base_url:
+        if api_key.startswith("AIza"):
+            base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        elif api_key.startswith("gsk_"):
+            base_url = "https://api.groq.com/openai/v1"
+
+    provider = _detect_provider(base_url)
+    if provider == "gemini-openai-compat" and (not raw_model or raw_model == "gpt-4o-mini"):
+        model = "gemini-2.5-flash-lite"
+    elif provider == "groq-openai-compat" and (not raw_model or raw_model == "gpt-4o-mini"):
+        model = "llama-3.3-70b-versatile"
+    else:
+        model = raw_model or "gpt-4o-mini"
 
     raw_allow_empty = os.getenv("LLM_ALLOW_EMPTY_KEY", "false").strip().lower() == "true"
     # Em produção não permite modo sem chave, exceto override explícito para gateway privado.
     allow_empty_key = (not is_production) and raw_allow_empty
 
-    provider = _detect_provider(base_url)
     configured = bool(api_key) or (allow_empty_key and bool(base_url))
 
     if configured and not api_key:
