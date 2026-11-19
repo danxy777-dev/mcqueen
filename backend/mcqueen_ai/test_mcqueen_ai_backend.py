@@ -399,7 +399,13 @@ def test_gemini_base_url_normalization_and_model_fallback(monkeypatch):
     auto_cfg = load_settings()
     assert auto_cfg.provider == "gemini-openai-compat"
     assert auto_cfg.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
-    assert auto_cfg.model == "gemini-2.5-flash-lite"
+    assert auto_cfg.model == "gemini-3-flash-preview"
+
+    monkeypatch.setenv("LLM_API_KEY", "AQ.FakeAuthKeyForAutoDetection123456")
+    aq_cfg = load_settings()
+    assert aq_cfg.provider == "gemini-openai-compat"
+    assert aq_cfg.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert aq_cfg.model == "gemini-3-flash-preview"
 
     monkeypatch.setenv(
         "LLM_BASE_URL",
@@ -501,8 +507,9 @@ def test_optional_client_token_enforced(monkeypatch):
 
 
 def test_scrub_secrets_redacts_api_keys():
-    raw = "Fail with sk-proj-abcd12345678 and AIzaSyDummyKey12345 and Bearer abcdef123456"
+    raw = "Fail with sk-proj-abcd12345678, AIzaSyDummyKey12345, AQ.DummyAuthKey123456 and Bearer abcdef123456"
     scrubbed = scrub_secrets(raw)
     assert "sk-proj-abcd" not in scrubbed
     assert "AIzaSyDummy" not in scrubbed
+    assert "AQ.DummyAuth" not in scrubbed
     assert "abcdef123456" not in scrubbed

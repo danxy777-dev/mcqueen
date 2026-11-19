@@ -30,13 +30,13 @@ from app.security import scrub_secrets
 logger = logging.getLogger("mcqueen_ai.llm")
 
 _PREFERRED_GEMINI_FLASH_MODELS: tuple[str, ...] = (
-    "gemini-2.5-flash-lite",
     "gemini-3-flash-preview",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    "gemini-3.1-flash-lite",
     "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-3.8-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
 )
 _EXCLUDED_GEMINI_MODEL_PARTS: tuple[str, ...] = (
     "embedding",

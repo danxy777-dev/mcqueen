@@ -17,6 +17,7 @@ from fastapi import Request
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}"), "[REDACTED_OPENAI_KEY]"),
     (re.compile(r"\bAIza[A-Za-z0-9_-]{8,}"), "[REDACTED_GOOGLE_KEY]"),
+    (re.compile(r"\bAQ\.[A-Za-z0-9._-]{8,}"), "[REDACTED_GOOGLE_AUTH_KEY]"),
     (re.compile(r"\bgsk_[A-Za-z0-9_-]{8,}"), "[REDACTED_GROQ_KEY]"),
     (re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer [REDACTED_TOKEN]"),
     (re.compile(r"(?i)(api_key|token|secret|password)=([^\s&\"']+)"), r"\1=[REDACTED]"),

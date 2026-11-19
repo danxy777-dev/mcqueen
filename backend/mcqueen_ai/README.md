@@ -26,9 +26,9 @@ Gateway conversacional seguro, com **Tool Calling** e suporte ao deploy em nuvem
 ## Modelos Recomendados (Econômicos)
 
 - **OpenAI (padrão):** `LLM_MODEL=gpt-4o-mini` com `OPENAI_API_KEY` (ou `LLM_API_KEY`).
-- **Google Gemini (API OpenAI-compatível):**
+- **Google Gemini (API OpenAI-compatível — chaves `AQ.` ou `AIza`):**
   - `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`
-  - `LLM_MODEL=gemini-2.5-flash`
+  - `LLM_MODEL=gemini-3-flash-preview`
   - `LLM_API_KEY=<sua-chave-google-ai-studio>`
 - **Groq:**
   - `LLM_BASE_URL=https://api.groq.com/openai/v1`

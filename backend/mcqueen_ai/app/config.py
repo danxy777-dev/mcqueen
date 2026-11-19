@@ -121,22 +121,27 @@ def load_settings() -> AppSettings:
     environment = raw_env.strip().lower() or "development"
     is_production = environment in {"production", "prod"}
 
-    api_key = (os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip()
+    api_key = (
+        (os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or "")
+        .strip()
+        .strip('"')
+        .strip("'")
+    )
     if api_key.lower() in _PLACEHOLDER_KEYS:
         api_key = ""
 
     base_url = _normalize_base_url(os.getenv("LLM_BASE_URL") or "")
-    raw_model = (os.getenv("LLM_MODEL") or "").strip()
+    raw_model = (os.getenv("LLM_MODEL") or "").strip().strip('"').strip("'")
 
     if not base_url:
-        if api_key.startswith("AIza"):
+        if api_key.startswith(("AIza", "AQ.")):
             base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
         elif api_key.startswith("gsk_"):
             base_url = "https://api.groq.com/openai/v1"
 
     provider = _detect_provider(base_url)
     if provider == "gemini-openai-compat" and (not raw_model or raw_model == "gpt-4o-mini"):
-        model = "gemini-2.5-flash-lite"
+        model = "gemini-3-flash-preview"
     elif provider == "groq-openai-compat" and (not raw_model or raw_model == "gpt-4o-mini"):
         model = "llama-3.3-70b-versatile"
     else:
